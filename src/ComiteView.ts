@@ -1,5 +1,6 @@
-import { ItemView, WorkspaceLeaf, Notice, TFile, TFolder } from "obsidian";
+import { ItemView, WorkspaceLeaf, Notice, TFile, TFolder, FileSystemAdapter } from "obsidian";
 import type ComitePlugin from "./main";
+import { runCommittee } from "./Runner";
 
 export const COMITE_VIEW_TYPE = "comite-patrimonial-view";
 
@@ -9,6 +10,7 @@ export class ComiteView extends ItemView {
 	private logsEl!: HTMLPreElement;
 	private btnEl!: HTMLButtonElement;
 	private bootstraps: TFile[] = [];
+	private running = false;
 
 	constructor(leaf: WorkspaceLeaf, private plugin: ComitePlugin) {
 		super(leaf);
@@ -57,13 +59,7 @@ export class ComiteView extends ItemView {
 			text: "Lancer comité",
 			cls: "mod-cta colbert-launch",
 		});
-		this.btnEl.onclick = () => {
-			if (this.bootstraps.length === 0 || !this.bootstrapSelectEl.value) {
-				new Notice("Aucun bootstrap sélectionné.");
-				return;
-			}
-			new Notice(`(stub) Bootstrap choisi : ${this.bootstrapSelectEl.value}\nBranchement runner à l'étape 5.`);
-		};
+		this.btnEl.onclick = () => this.launch();
 
 		this.logsEl = root.createEl("pre", { cls: "colbert-logs" });
 		this.logsEl.textContent = "(logs à venir)";
@@ -114,6 +110,69 @@ export class ComiteView extends ItemView {
 				value: b.path,
 			});
 		}
+	}
+
+	private async launch() {
+		if (this.running) return;
+
+		const bootstrapPath = this.bootstrapSelectEl.value;
+		if (!bootstrapPath || this.bootstraps.length === 0) {
+			new Notice("Aucun bootstrap sélectionné.");
+			return;
+		}
+
+		const { scriptPath, claudeBin } = this.plugin.settings;
+		if (!scriptPath) {
+			new Notice("Configurer 'Chemin de committee.sh' dans les settings.");
+			return;
+		}
+
+		const adapter = this.app.vault.adapter;
+		if (!(adapter instanceof FileSystemAdapter)) {
+			new Notice("Plugin desktop uniquement (FileSystemAdapter requis).");
+			return;
+		}
+		const cwd = adapter.getBasePath();
+		const absoluteBootstrap = `${cwd}/${bootstrapPath}`;
+
+		this.running = true;
+		this.btnEl.disabled = true;
+		this.btnEl.textContent = "Comité en cours…";
+		this.logsEl.textContent = "";
+
+		new Notice("Comité lancé. Suivre les logs dans la sidebar.");
+
+		try {
+			await runCommittee(
+				{
+					scriptPath,
+					cwd,
+					claudeBin,
+					bootstrapPath: absoluteBootstrap,
+					skills: this.skillsInputEl.value.trim() || undefined,
+				},
+				(line) => this.appendLog(line)
+			);
+			new Notice("Comité terminé. (Ouverture du Final Report : étape 6.)");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : String(err);
+			new Notice(`Échec : ${msg}`);
+			this.appendLog(`\n[ERROR] ${msg}`);
+		} finally {
+			this.running = false;
+			this.btnEl.disabled = false;
+			this.btnEl.textContent = "Lancer comité";
+		}
+	}
+
+	private appendLog(line: string) {
+		const max = 2000;
+		this.logsEl.textContent = (this.logsEl.textContent ?? "") + line + "\n";
+		const lines = this.logsEl.textContent.split("\n");
+		if (lines.length > max) {
+			this.logsEl.textContent = lines.slice(lines.length - max).join("\n");
+		}
+		this.logsEl.scrollTop = this.logsEl.scrollHeight;
 	}
 
 	async onClose() {}
