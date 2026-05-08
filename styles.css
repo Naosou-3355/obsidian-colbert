@@ -1,8 +1,48 @@
-/*
+.colbert-view {
+	padding: 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.colbert-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--text-muted);
+}
 
-If your plugin does not need CSS, delete this file.
+.colbert-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
 
-*/
+.colbert-select {
+	flex: 1;
+	min-width: 0;
+}
+
+.colbert-refresh {
+	flex: 0 0 auto;
+	padding: 0 8px;
+}
+
+.colbert-input {
+	width: 100%;
+}
+
+.colbert-launch {
+	margin-top: 4px;
+}
+
+.colbert-logs {
+	background: var(--background-secondary);
+	padding: 8px;
+	font-family: var(--font-monospace);
+	font-size: 11px;
+	max-height: 400px;
+	overflow-y: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	margin: 0;
+}
