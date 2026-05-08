@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-colbert",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"description": "Plugin Obsidian Colbert : sidebar qui orchestre committee.sh (comité d'analyse patrimoniale multi-experts).",
 	"main": "main.js",
 	"type": "module",
