@@ -22,14 +22,21 @@ export function startCommittee(
 	opts: RunOptions,
 	onLog: (line: string) => void
 ): RunHandle {
-	const args = [
-		opts.scriptPath,
-		"--bootstrap",
-		opts.bootstrapPath,
+	// Use source instead of exec so that SKILLS_ARRAY declared here is visible
+	// inside committee.sh's update_status() calls (which run before line 620).
+	// committee.sh is unchanged; the array is filled at line 620 as usual.
+	const scriptArgs = [
+		"--bootstrap", opts.bootstrapPath,
 		"--force-full",
 		"--yes",
 	];
-	if (opts.skills) args.push("--skills", opts.skills);
+	if (opts.skills) scriptArgs.push("--skills", opts.skills);
+
+	const args = [
+		"-c", 'declare -a SKILLS_ARRAY=(); source "$@"',
+		"--", opts.scriptPath,
+		...scriptArgs,
+	];
 
 	const extraPath = opts.claudeBin
 		? `${opts.claudeBin.replace(/\/[^/]+$/, "")}:`

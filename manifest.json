@@ -1,7 +1,7 @@
 {
 	"id": "colbert",
 	"name": "Colbert",
-	"version": "1.0.7",
+	"version": "1.0.8",
 	"minAppVersion": "1.5.0",
 	"description": "Lance un comité d'analyse patrimoniale via committee.sh depuis une sidebar.",
 	"author": "Naosou-3355",
