@@ -16,6 +16,10 @@ export class ComiteView extends ItemView {
 	private running = false;
 	private currentHandle: RunHandle | null = null;
 
+	isRunning(): boolean {
+		return this.running;
+	}
+
 	constructor(leaf: WorkspaceLeaf, private plugin: ComitePlugin) {
 		super(leaf);
 	}
