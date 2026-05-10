@@ -38,6 +38,7 @@ export function startCommittee(
 	const env = {
 		...process.env,
 		PATH: `${extraPath}${process.env.PATH ?? ""}`,
+		ERM: "1",
 	};
 
 	// detached: true → bash devient leader d'un nouveau process group.
