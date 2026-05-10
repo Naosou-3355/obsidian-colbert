@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 
 export interface RunOptions {
 	scriptPath: string;
@@ -38,21 +39,25 @@ export function startCommittee(
 		...scriptArgs,
 	];
 
-	const extraPath = opts.claudeBin
-		? `${opts.claudeBin.replace(/\/[^/]+$/, "")}:`
-		: "/usr/local/bin:/opt/homebrew/bin:";
+	// committee.sh requires bash 4+ (declare -A, etc.). macOS /bin/bash is 3.2,
+	// so we always prepend Homebrew paths and prefer /opt/homebrew/bin/bash.
+	const claudeDir = opts.claudeBin ? opts.claudeBin.replace(/\/[^/]+$/, "") : "";
+	const pathPrefix = [claudeDir, "/opt/homebrew/bin", "/usr/local/bin"]
+		.filter(Boolean)
+		.join(":");
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { ANTHROPIC_API_KEY: _omit, ...inheritedEnv } = process.env;
 	const env = {
 		...inheritedEnv,
-		PATH: `${extraPath}${process.env.PATH ?? ""}`,
+		PATH: `${pathPrefix}:${process.env.PATH ?? ""}`,
 		TERM: process.env.TERM ?? "dumb",
 	};
 
 	// detached: true → bash devient leader d'un nouveau process group.
 	// Permet de tuer toute la descendance via process.kill(-pgid, signal).
-	const proc = spawn("bash", args, { cwd: opts.cwd, env, detached: true });
+	const bashBin = existsSync("/opt/homebrew/bin/bash") ? "/opt/homebrew/bin/bash" : "bash";
+	const proc = spawn(bashBin, args, { cwd: opts.cwd, env, detached: true });
 
 	const handle = (buf: Buffer) => {
 		buf
