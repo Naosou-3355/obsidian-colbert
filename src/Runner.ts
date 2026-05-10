@@ -35,10 +35,12 @@ export function startCommittee(
 		? `${opts.claudeBin.replace(/\/[^/]+$/, "")}:`
 		: "/usr/local/bin:/opt/homebrew/bin:";
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	const { ANTHROPIC_API_KEY: _omit, ...inheritedEnv } = process.env;
 	const env = {
-		...process.env,
+		...inheritedEnv,
 		PATH: `${extraPath}${process.env.PATH ?? ""}`,
-		ERM: "1",
+		TERM: process.env.TERM ?? "dumb",
 	};
 
 	// detached: true → bash devient leader d'un nouveau process group.
