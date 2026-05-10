@@ -31,8 +31,20 @@
 	width: 100%;
 }
 
-.colbert-launch {
+.colbert-btn-row {
+	display: flex;
+	gap: 6px;
 	margin-top: 4px;
+}
+
+.colbert-launch {
+	flex: 1;
+}
+
+.colbert-stop {
+	flex: 0 0 auto;
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
 }
 
 .colbert-logs {

@@ -8,10 +8,20 @@ export interface RunOptions {
 	skills?: string;
 }
 
-export async function runCommittee(
+export interface RunResult {
+	code: number | null;
+	signal: NodeJS.Signals | null;
+}
+
+export interface RunHandle {
+	wait: Promise<RunResult>;
+	kill: () => void;
+}
+
+export function startCommittee(
 	opts: RunOptions,
 	onLog: (line: string) => void
-): Promise<{ code: number }> {
+): RunHandle {
 	const args = [
 		opts.scriptPath,
 		"--bootstrap",
@@ -30,24 +40,52 @@ export async function runCommittee(
 		PATH: `${extraPath}${process.env.PATH ?? ""}`,
 	};
 
-	return new Promise((resolve, reject) => {
-		const proc = spawn("bash", args, { cwd: opts.cwd, env });
+	// detached: true → bash devient leader d'un nouveau process group.
+	// Permet de tuer toute la descendance via process.kill(-pgid, signal).
+	const proc = spawn("bash", args, { cwd: opts.cwd, env, detached: true });
 
-		const handle = (buf: Buffer) => {
-			buf
-				.toString()
-				.split("\n")
-				.forEach((l) => {
-					if (l.length) onLog(l);
-				});
-		};
-		proc.stdout.on("data", handle);
-		proc.stderr.on("data", handle);
+	const handle = (buf: Buffer) => {
+		buf
+			.toString()
+			.split("\n")
+			.forEach((l) => {
+				if (l.length) onLog(l);
+			});
+	};
+	proc.stdout?.on("data", handle);
+	proc.stderr?.on("data", handle);
 
+	const wait = new Promise<RunResult>((resolve, reject) => {
 		proc.on("error", (err) => reject(err));
-		proc.on("close", (code) => {
-			if (code === 0) resolve({ code });
-			else reject(new Error(`committee.sh exit ${code}`));
-		});
+		proc.on("close", (code, signal) => resolve({ code, signal }));
 	});
+
+	let killTimer: NodeJS.Timeout | null = null;
+
+	const kill = () => {
+		if (!proc.pid) return;
+		try {
+			process.kill(-proc.pid, "SIGTERM");
+		} catch {
+			try {
+				proc.kill("SIGTERM");
+			} catch {
+				// process déjà mort
+			}
+		}
+		if (killTimer) return;
+		killTimer = setTimeout(() => {
+			try {
+				process.kill(-proc.pid!, "SIGKILL");
+			} catch {
+				// déjà mort
+			}
+		}, 3000);
+	};
+
+	wait.finally(() => {
+		if (killTimer) clearTimeout(killTimer);
+	});
+
+	return { wait, kill };
 }

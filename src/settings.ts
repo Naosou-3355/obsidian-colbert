@@ -6,6 +6,7 @@ export interface ComiteSettings {
 	claudeBin: string;
 	committeesDir: string;
 	finalReportsDir: string;
+	logsDir: string;
 }
 
 export const DEFAULT_SETTINGS: ComiteSettings = {
@@ -13,6 +14,7 @@ export const DEFAULT_SETTINGS: ComiteSettings = {
 	claudeBin: "",
 	committeesDir: "06 - Analyses/Committees",
 	finalReportsDir: "06 - Analyses/Final Reports",
+	logsDir: "99 - LLM/Logs",
 };
 
 export class ComiteSettingTab extends PluginSettingTab {
@@ -70,6 +72,18 @@ export class ComiteSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.finalReportsDir)
 					.onChange(async (v) => {
 						this.plugin.settings.finalReportsDir = v.trim();
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName("Dossier des logs / runs")
+			.setDesc("Chemin relatif au vault (contient runs/<...>/ et les .log)")
+			.addText((t) =>
+				t
+					.setValue(this.plugin.settings.logsDir)
+					.onChange(async (v) => {
+						this.plugin.settings.logsDir = v.trim();
 						await this.plugin.saveSettings();
 					})
 			);
