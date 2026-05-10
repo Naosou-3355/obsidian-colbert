@@ -57,4 +57,5 @@
 	white-space: pre-wrap;
 	word-break: break-word;
 	margin: 0;
+	user-select: text;
 }
