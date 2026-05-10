@@ -12,9 +12,24 @@ export class ComiteView extends ItemView {
 	private logsEl!: HTMLPreElement;
 	private launchBtnEl!: HTMLButtonElement;
 	private stopBtnEl!: HTMLButtonElement;
+	private downloadBtnEl!: HTMLButtonElement;
 	private bootstraps: TFile[] = [];
 	private running = false;
 	private currentHandle: RunHandle | null = null;
+	private fullLogBuffer: string[] = [];
+	private lastRun: {
+		startIso: string;
+		endIso: string;
+		durationSec: number;
+		bootstrapPath: string;
+		skills: string;
+		scriptPath: string;
+		claudeBin: string;
+		exitCode: number | null;
+		signal: NodeJS.Signals | null;
+		errorMessage?: string;
+		artifacts: { kind: string; path: string }[];
+	} | null = null;
 
 	isRunning(): boolean {
 		return this.running;
@@ -76,6 +91,13 @@ export class ComiteView extends ItemView {
 		});
 		this.stopBtnEl.style.display = "none";
 		this.stopBtnEl.onclick = () => this.stop();
+
+		this.downloadBtnEl = root.createEl("button", {
+			text: "⬇ Télécharger logs du dernier run",
+			cls: "colbert-download",
+		});
+		this.downloadBtnEl.style.display = "none";
+		this.downloadBtnEl.onclick = () => this.downloadLastRun();
 
 		this.logsEl = root.createEl("pre", { cls: "colbert-logs" });
 		this.logsEl.textContent = "(logs à venir)";
@@ -152,13 +174,20 @@ export class ComiteView extends ItemView {
 		const absoluteBootstrap = `${cwd}/${bootstrapPath}`;
 
 		const runStart = Date.now();
+		const skills = this.skillsInputEl.value.trim() || "";
 		this.running = true;
 		this.launchBtnEl.disabled = true;
 		this.launchBtnEl.textContent = "Comité en cours…";
 		this.stopBtnEl.style.display = "";
+		this.downloadBtnEl.style.display = "none";
 		this.logsEl.textContent = "";
+		this.fullLogBuffer = [];
 
 		new Notice("Comité lancé. Suivre les logs dans la sidebar.");
+
+		let exitCode: number | null = null;
+		let signal: NodeJS.Signals | null = null;
+		let errorMessage: string | undefined;
 
 		try {
 			this.currentHandle = startCommittee(
@@ -167,12 +196,14 @@ export class ComiteView extends ItemView {
 					cwd,
 					claudeBin,
 					bootstrapPath: absoluteBootstrap,
-					skills: this.skillsInputEl.value.trim() || undefined,
+					skills: skills || undefined,
 				},
 				(line) => this.appendLog(line)
 			);
 
 			const result = await this.currentHandle.wait;
+			exitCode = result.code;
+			signal = result.signal;
 
 			if (result.signal) {
 				this.appendLog(`\n[STOPPED] Run interrompu (${result.signal}).`);
@@ -183,20 +214,35 @@ export class ComiteView extends ItemView {
 				this.appendLog(`\n[ERROR] committee.sh exit ${result.code}`);
 				new Notice(`Échec : exit ${result.code}`);
 			}
-
-			await this.reportArtifacts(cwd, runStart);
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : String(err);
-			new Notice(`Échec : ${msg}`);
-			this.appendLog(`\n[ERROR] ${msg}`);
-			await this.reportArtifacts(cwd, runStart);
-		} finally {
-			this.currentHandle = null;
-			this.running = false;
-			this.launchBtnEl.disabled = false;
-			this.launchBtnEl.textContent = "Lancer comité";
-			this.stopBtnEl.style.display = "none";
+			errorMessage = err instanceof Error ? err.message : String(err);
+			new Notice(`Échec : ${errorMessage}`);
+			this.appendLog(`\n[ERROR] ${errorMessage}`);
 		}
+
+		const artifacts = await this.reportArtifacts(cwd, runStart);
+		const runEnd = Date.now();
+
+		this.lastRun = {
+			startIso: new Date(runStart).toISOString(),
+			endIso: new Date(runEnd).toISOString(),
+			durationSec: Math.round((runEnd - runStart) / 1000),
+			bootstrapPath: absoluteBootstrap,
+			skills,
+			scriptPath,
+			claudeBin,
+			exitCode,
+			signal,
+			errorMessage,
+			artifacts,
+		};
+
+		this.currentHandle = null;
+		this.running = false;
+		this.launchBtnEl.disabled = false;
+		this.launchBtnEl.textContent = "Lancer comité";
+		this.stopBtnEl.style.display = "none";
+		this.downloadBtnEl.style.display = "";
 	}
 
 	private stop() {
@@ -209,7 +255,10 @@ export class ComiteView extends ItemView {
 		}, 3500);
 	}
 
-	private async reportArtifacts(vaultRoot: string, runStart: number) {
+	private async reportArtifacts(
+		vaultRoot: string,
+		runStart: number
+	): Promise<{ kind: string; path: string }[]> {
 		const { logsDir, finalReportsDir } = this.plugin.settings;
 		const found: { kind: string; path: string }[] = [];
 
@@ -231,15 +280,18 @@ export class ComiteView extends ItemView {
 		this.appendLog("=== ARTEFACTS PRODUITS DEPUIS LE LANCEMENT ===");
 		if (found.length === 0) {
 			this.appendLog("(aucun artefact détecté)");
-			return;
+			return found;
 		}
 		for (const a of found) {
 			this.appendLog(`  • [${a.kind}] ${a.path}`);
 		}
 		this.appendLog("(supprimer manuellement si non désirés)");
+		return found;
 	}
 
 	private appendLog(line: string) {
+		this.fullLogBuffer.push(line);
+
 		const max = 2000;
 		this.logsEl.textContent = (this.logsEl.textContent ?? "") + line + "\n";
 		const lines = this.logsEl.textContent.split("\n");
@@ -247,6 +299,80 @@ export class ComiteView extends ItemView {
 			this.logsEl.textContent = lines.slice(lines.length - max).join("\n");
 		}
 		this.logsEl.scrollTop = this.logsEl.scrollHeight;
+	}
+
+	private async downloadLastRun() {
+		if (!this.lastRun) {
+			new Notice("Aucun run à télécharger.");
+			return;
+		}
+		const r = this.lastRun;
+		const adapter = this.app.vault.adapter;
+		const vaultLogContent = await readFileSafe(findVaultLogPath(r.artifacts));
+
+		let status: string;
+		if (r.signal) status = `INTERRUPTED (${r.signal})`;
+		else if (r.errorMessage) status = `EXCEPTION (${r.errorMessage})`;
+		else if (r.exitCode === 0) status = "SUCCESS";
+		else status = `FAILED (exit ${r.exitCode})`;
+
+		const artifactsBlock = r.artifacts.length
+			? r.artifacts.map((a) => `  - [${a.kind}] ${a.path}`).join("\n")
+			: "  (none)";
+
+		const report = [
+			"========================================================================",
+			"  COLBERT — Run Report",
+			"========================================================================",
+			"",
+			"## Metadata",
+			`  Run start    : ${r.startIso}`,
+			`  Run end      : ${r.endIso}`,
+			`  Duration     : ${r.durationSec}s`,
+			`  Status       : ${status}`,
+			`  Exit code    : ${r.exitCode}`,
+			`  Signal       : ${r.signal ?? "-"}`,
+			r.errorMessage ? `  Error        : ${r.errorMessage}` : "",
+			"",
+			"## Inputs",
+			`  Bootstrap    : ${r.bootstrapPath}`,
+			`  Skills override : ${r.skills || "(auto)"}`,
+			`  Script path  : ${r.scriptPath}`,
+			`  Claude bin   : ${r.claudeBin || "(auto from PATH)"}`,
+			`  Vault root   : ${adapter instanceof FileSystemAdapter ? adapter.getBasePath() : "(unknown)"}`,
+			"",
+			"## Artifacts",
+			artifactsBlock,
+			"",
+			"## Streamed stdout/stderr (full, not truncated)",
+			"------------------------------------------------------------------------",
+			this.fullLogBuffer.join("\n"),
+			"------------------------------------------------------------------------",
+			"",
+			"## Vault log file content (if found)",
+			"------------------------------------------------------------------------",
+			vaultLogContent,
+			"------------------------------------------------------------------------",
+			"",
+		]
+			.filter((l) => l !== "")
+			.join("\n");
+
+		const slug = r.bootstrapPath.split("/").pop()?.replace(/\.md$/, "") ?? "run";
+		const ts = r.startIso.replace(/[:.]/g, "-");
+		const filename = `colbert-run-${ts}-${slug}.txt`;
+
+		const blob = new Blob([report], { type: "text/plain;charset=utf-8" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+		new Notice(`Téléchargement : ${filename}`);
 	}
 
 	async onClose() {
@@ -259,6 +385,21 @@ export class ComiteView extends ItemView {
 interface ScanOpts {
 	filesOnly?: boolean;
 	dirsOnly?: boolean;
+}
+
+function findVaultLogPath(artifacts: { kind: string; path: string }[]): string | null {
+	const log = artifacts.find((a) => a.kind === "Log" && a.path.endsWith(".log"));
+	return log ? log.path : null;
+}
+
+async function readFileSafe(path: string | null): Promise<string> {
+	if (!path) return "(no vault log file detected for this run)";
+	try {
+		return await fsp.readFile(path, "utf8");
+	} catch (e) {
+		const msg = e instanceof Error ? e.message : String(e);
+		return `(could not read ${path}: ${msg})`;
+	}
 }
 
 async function scanFsDir(absDir: string, sinceMs: number, opts: ScanOpts = {}): Promise<string[]> {
