@@ -87,3 +87,20 @@ Quand on bump la version (changement breaking ou release stable) : éditer
 
 L'utilisateur valide chaque étape avant de passer à la suivante. Réponses
 succinctes, pas de re-paraphrase du code écrit.
+
+---
+
+## RÈGLE D'OR — Modification de code
+
+**Ne jamais modifier le code d'un script ou d'un fichier source sans accord
+explicite de l'utilisateur.**
+
+Si une modification semble nécessaire pour avancer :
+
+1. **Stopper** — ne pas modifier.
+2. **Expliquer simplement** : quelle est la limite rencontrée, et ce que la
+   modification changerait concrètement (comportement avant / après).
+3. **Attendre le feu vert** de l'utilisateur avant d'écrire quoi que ce soit.
+
+Cette règle s'applique à tous les fichiers : `src/`, scripts du vault,
+configs, `package.json`, etc.
